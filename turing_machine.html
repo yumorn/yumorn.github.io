@@ -1,0 +1,214 @@
+<!DOCTYPE html> 
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Turing Machine</title>
+    <style>
+        #input {
+            overflow:scroll;
+        }
+        #view {
+            font-family:'Courier New', Courier, monospace;
+        }
+    </style>
+</head>
+<body>
+    <textarea id="input" rows="8" cols="40" wrap="off"></textarea>
+    <p id="view"></p>
+    <button onclick="new_clicked()">new</button>
+    <button onclick="next_clicked()">next</button>
+    <script type="text/javascript">
+        const None = "&nbsp;"
+
+        function Tape() {
+            this.index = 0
+            this.data = [None]
+        }
+
+        Tape.prototype.cur = function() {
+            return this.data[this.index]
+        }
+
+        Tape.prototype.print = function(c) {
+            this.data[this.index] = c
+        }
+
+        Tape.prototype.erase = function() {
+            this.print(None)
+        }
+
+        Tape.prototype.left = function() {
+            if (this.index == 0) {
+                this.data.unshift(None)
+            } else {
+                this.index--
+            }
+        }
+
+        Tape.prototype.right = function() {
+            if (this.index == this.data.length - 1) {
+                this.data.push(None)
+            }
+            this.index++
+        }
+
+        Tape.prototype.innerHTML = function() {
+            const left = this.data.slice(0, this.index)
+            const middle = ['<u>' + this.data[this.index] + '</u>']
+            const right = this.data.slice(this.index + 1, this.data.length)
+            return left.concat(middle).concat(right).join('')
+        }
+
+        function TuringMachine(rules_str) {
+            this.tape = new Tape()
+            var rules = JSON.parse(rules_str)
+            this.rules = rules
+            this.state = 'b'
+        }
+
+        TuringMachine.prototype.next = function() {
+            const symbol = this.tape.cur()
+            const rules = this.rules[this.state]
+            for (let rule of rules) {
+                if (rule.symbols.indexOf(symbol) != -1 ||
+                        symbol != None && rule.symbols.indexOf('Any') != -1 ||
+                        symbol == None && rule.symbols.indexOf('None') != -1) {
+                    for (let operation of rule.operations) {
+                        if (operation == 'L') {
+                            this.tape.left()
+                        } else if (operation == 'R') {
+                            this.tape.right()
+                        } else if (operation == 'E') {
+                            this.tape.erase()
+                        } else {
+                            console.assert(operation[0] == 'P')
+                            this.tape.print(operation[1])
+                        }
+                    }
+                    this.state = rule.next
+                    break
+                }
+            }
+        }
+        
+        var view = document.getElementById('view')
+        var machine = null
+
+        function new_clicked() {
+            console.log(document.getElementById('input').text)
+            try {
+                machine = new TuringMachine(document.getElementById('input').value)
+            } catch (e) {
+                alert('error in rules')
+                return
+            }
+            view.innerHTML = machine.tape.innerHTML()
+        }
+
+        function next_clicked() {
+            if (machine) {
+                machine.next()
+                view.innerHTML = machine.tape.innerHTML()
+            }
+        }        
+    </script>
+    <h3>demo1:</h3>
+    <p>
+        {
+            "b" : [
+                {
+                    "symbols": ["Any", "None"],
+                    "operations": ["P0", "R"],
+                    "next": "c"
+                }
+            ],
+            "c" : [
+                {
+                    "symbols": ["Any", "None"],
+                    "operations": ["R"],
+                    "next": "e"
+                }
+            ],
+            "e" : [
+                {
+                    "symbols": ["Any", "None"],
+                    "operations": ["P1", "R"],
+                    "next": "z"
+                }
+            ],
+            "z" : [
+                {
+                    "symbols": ["Any", "None"],
+                    "operations": ["R"],
+                    "next": "b"
+                }
+            ]
+        }
+    </p>
+    <h3>demo2:</h3>
+    <p>
+        {
+            "b" : [
+                {
+                    "symbols": ["Any", "None"],
+                    "operations": ["Pe", "R", "Pe", "R", "P0", "R", "R", "P0", "L", "L"],
+                    "next": "o"
+                }
+            ],
+            "o" : [
+                {
+                    "symbols": ["1"],
+                    "operations": ["R", "Px", "L", "L", "L"],
+                    "next": "o"
+                },
+                {
+                    "symbols": ["0"],
+                    "operations": [],
+                    "next": "q"
+                }
+            ],
+            "q" : [
+                {
+                    "symbols": ["Any"],
+                    "operations": ["R", "R"],
+                    "next": "q"
+                },
+                {
+                    "symbols": ["None"],
+                    "operations": ["P1", "L"],
+                    "next": "p"
+                }
+            ],
+            "p" : [
+                {
+                    "symbols": ["x"],
+                    "operations": ["E", "R"],
+                    "next": "q"
+                },
+                {
+                    "symbols": ["e"],
+                    "operations": ["R"],
+                    "next": "f"
+                },
+                {
+                    "symbols": ["None"],
+                    "operations": ["L", "L"],
+                    "next": "p"
+                }
+            ],
+            "f" : [
+                {
+                    "symbols": ["Any"],
+                    "operations": ["R", "R"],
+                    "next": "f"
+                },
+                {
+                    "symbols": ["None"],
+                    "operations": ["P0", "L", "L"],
+                    "next": "o"
+                }
+            ]
+        }
+    </p>
+</body>
+</html>

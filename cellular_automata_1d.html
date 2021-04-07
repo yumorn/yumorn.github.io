@@ -1,0 +1,164 @@
+<!DOCTYPE html> 
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Cellular Automata 1D</title>
+</head>
+<body>
+    <canvas id="canvas" width=801, height=801></canvas>
+    <table id="params" style="position:absolute; left:830px; top:10px;">
+        <tr>
+            <td>Init</td>
+            <td><input id="init-input" value="0" onchange="draw()"/></td>
+        </tr>
+        <tr>
+            <td>Type</td>
+            <td><input id="type-input" value="22" onchange="draw()"/></td>
+        </tr>
+        <tr>
+            <td>Scale</td>
+            <td><input id="scale-input" type="range" min="0.01" max="1.0" step=0.01 value="1.0" onchange="draw()"/></td>
+        </tr>
+    </table>
+
+    <script id="vertex-shader" type="x-shader/x-vertex">
+        attribute vec2 a_position;
+        attribute float a_color;
+        varying float color;
+        uniform float scale;
+        void main() {
+            vec2 pos = (a_position - vec2(0.0, 1.0)) / scale + vec2(0.0, 1.0);
+            gl_Position = vec4(pos, 0, 1);
+            color = a_color;
+        }
+    </script>
+
+    <script id="fragment-shader" type="x-shader/x-fragment">
+        precision mediump float;
+        varying float color;
+        void main() {
+            gl_FragColor = vec4(color, color, color, 1.0);
+        }
+    </script>
+
+    <script type="text/javascript" src="glutils.js"></script>
+    <script type="text/javascript">
+        function CellMachine1D(size, init) {
+            this.data = new Array(size).fill(0);
+            var base = (size >> 1);
+            for(let i of init) {
+                i += base;
+                if(i >= 0 && i < size) {
+                    this.data[i] = 1;
+                }
+            }
+        }
+        CellMachine1D.prototype.setType = function(type) {
+            if(!(typeof type === 'number' && type % 1 === 0 && type >= 0 && type <= 255)) {
+                throw 'Illegal type';
+            }
+            var rules = new Array(8);
+            for(let i = 0; i < 8; ++i) {
+                rules[i] = ((type >> i) & 1);
+            }
+            this.next = function() {
+                const data = this.data;
+                const nextData = new Array(data.length);
+                nextData[0] = rules[data[0] * 2 + data[1]];
+                for(let i = 1; i < data.length - 1; ++i) {
+                    nextData[i] = rules[data[i - 1] * 4 + data[i] * 2 + data[i + 1]];
+                }
+                nextData[data.length - 1] = rules[data[data.length - 2] * 4 + data[data.length - 1] * 2];
+                this.data = nextData;
+                return this;
+            };
+            return this;
+        }
+        CellMachine1D.prototype.getFloat32Array = function(iterNum) {
+            if(!(typeof iterNum === 'number' && iterNum % 1 === 0)) {
+                throw 'Illegal iterNum';
+            }
+            var data = this.data;
+            var res = new Float32Array(data.length * iterNum * 18);
+            var width = 2.0 / data.length;
+            for(let i = 0; i < iterNum; ++i) {
+                for(let j = 0; j < data.length; ++j) {
+                    const color = 1.0 - this.data[j];
+                    const baseArrayIndex = (i * data.length + j) * 18;
+                    const basey = 1.0 - i * width;
+                    const basex = j * width - 1.0;
+                    res[baseArrayIndex + 0] = basex;
+                    res[baseArrayIndex + 1] = basey;
+                    res[baseArrayIndex + 2] = color;
+                    res[baseArrayIndex + 3] = basex + width;
+                    res[baseArrayIndex + 4] = basey - width;
+                    res[baseArrayIndex + 5] = color;
+                    res[baseArrayIndex + 6] = basex + width;
+                    res[baseArrayIndex + 7] = basey;
+                    res[baseArrayIndex + 8] = color;
+                    res[baseArrayIndex + 9] = basex;
+                    res[baseArrayIndex + 10] = basey;
+                    res[baseArrayIndex + 11] = color;
+                    res[baseArrayIndex + 12] = basex + width;
+                    res[baseArrayIndex + 13] = basey - width;
+                    res[baseArrayIndex + 14] = color;
+                    res[baseArrayIndex + 15] = basex;
+                    res[baseArrayIndex + 16] = basey - width;
+                    res[baseArrayIndex + 17] = color;
+                }
+                this.next();
+            }
+            return res;
+        }
+        
+        function draw() {
+            try {
+                var init = initInput.value.trim().split(/[,\s]+/);
+                for(let i in init) {
+                    init[i] = parseInt(init[i]);
+                }
+                var type = parseInt(typeInput.value);
+                var scale = parseFloat(scaleInput.value);
+            } catch(err) {
+                console.log("error when parse input");
+                return;
+            }
+            
+            gl.uniform1f(scaleLocation, scale);
+
+            try {
+                var array = new CellMachine1D(canvas.width, init).setType(type).getFloat32Array(canvas.height);
+            } catch(err) {
+                console.log(err);
+                return;
+            }
+
+            gl.bufferData(
+                gl.ARRAY_BUFFER,
+                array,
+                gl.STATIC_DRAW);
+            gl.drawArrays(gl.TRIANGLES, 0, canvas.width * canvas.height * 6);
+        }
+        
+        var initInput = document.getElementById("init-input");
+        var typeInput = document.getElementById("type-input");
+        var scaleInput = document.getElementById("scale-input");
+
+        var canvas = document.getElementById("canvas");
+        var gl = canvas.getContext("experimental-webgl");
+
+        var program = createProgramById("vertex-shader", "fragment-shader");
+        gl.useProgram(program);
+        
+        var scaleLocation = gl.getUniformLocation(program,'scale');
+
+        var buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 12, 0);
+        gl.enableVertexAttribArray(1);
+        gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 12, 8);
+        draw();
+    </script>
+</body>
+</html>

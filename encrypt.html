@@ -1,0 +1,118 @@
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>JavaScript RSA Encryption</title>
+  </head>
+  <body>
+    <script src="lib/cryptico.min.js"></script>
+    <script src="lib/clipboard.js"></script>
+    <script type="text/javascript">
+      function toHexString(bytes) {
+        return Array.from(bytes, function (byte) {
+           return ('0' + (byte & 0xFF).toString(16)).slice(-2);
+        }).join('')
+      }
+
+      function fromHexString(s) {
+        var res = [];
+        for (var i = 0; i < s.length; i += 2) {
+          res.push(parseInt(s.substring(i, i + 2), 16));
+        }
+        return res;
+      }
+
+      function generateAESKey() {
+        var AESKey = cryptico.generateAESKey();
+        document.getElementById("aeskey").value = toHexString(AESKey);
+      }
+
+      function encryptAES() {
+        var AESKey = fromHexString(document.getElementById("aeskey").value);
+        var PlainText = document.getElementById('before_aes').value;
+        var EncryptionResult = cryptico.encryptAESCBC(encodeURIComponent(PlainText), AESKey);
+        document.getElementById('after_aes').value = EncryptionResult;
+      }
+
+      function decryptAES() {
+        var AESKey = fromHexString(document.getElementById("aeskey").value);
+        var PlainText = document.getElementById('before_aes').value;
+        var DecryptionResult = cryptico.decryptAESCBC(PlainText, AESKey);
+        document.getElementById('after_aes').value = decodeURIComponent(DecryptionResult);
+      }
+
+      var MattsRSAkey;
+
+      function generateKey() {
+        var PassPhrase = document.getElementById("seed").value; 
+
+        // The length of the RSA key, in bits.
+        var Bits = parseInt(document.getElementById("keylength").value);
+        MattsRSAkey = cryptico.generateRSAKey(PassPhrase, Bits);
+        
+        document.getElementById("mypubkey").value = cryptico.publicKeyString(MattsRSAkey);
+      }
+
+      function encrypt() {
+        var PlainText = document.getElementById("before_encrypt").value;
+        var EncryptionResult = cryptico.encrypt(encodeURIComponent(PlainText), document.getElementById("pubkey").value);
+        document.getElementById("after_encrypt").value = EncryptionResult.cipher;
+      }
+
+      function decrypt() {
+        var CipherText = document.getElementById("before_decrypt").value;
+        var DecryptionResult = cryptico.decrypt(CipherText, MattsRSAkey);
+        document.getElementById("after_decrypt").value = decodeURIComponent(DecryptionResult.plaintext);
+      }
+
+    </script>
+
+    <h1>AES</h1>
+    <hr>
+
+    <label>AES密钥</label><button onclick="generateAESKey()">生成</button><br/>
+    <textarea id="aeskey" rows="1" cols="65"></textarea><br/>
+    <button onclick="copyTextToClipboard(document.getElementById('aeskey').value)">复制</button><br/>
+    <label>待加/解密文本：</label><br/>
+    <textarea id="before_aes" type="text" rows=4 cols=65></textarea><br/>
+    <button onclick="encryptAES()">加密</button><button onclick="decryptAES()">解密</button><br/>
+    <textarea id="after_aes" type="text" rows=4 cols=65, readonly="readonly"></textarea><br/>
+    <button onclick="copyTextToClipboard(document.getElementById('after_aes').value)">复制</button><br/>
+    <br/>
+    <br/>
+    
+    <h1>RSA</h1>
+    <hr>
+
+    <h2>解密</h2>
+    <label>对方的公钥</label><br/>
+    <textarea id="pubkey" rows="6" cols="65"></textarea><br/>
+    <label>待加密文本：</label><br/>
+    <textarea id="before_encrypt" type="text" rows=4 cols=65></textarea><br/>
+    <button onclick="encrypt()">加密</button><br/>
+    <textarea id="after_encrypt" type="text" rows=4 cols=65, readonly="readonly"></textarea><br/>
+    <button onclick="copyTextToClipboard(document.getElementById('after_encrypt').value)">复制</button><br/>
+    <br/>
+    <br/>
+    
+    <h2>加密</h2>
+    <label>自己的公钥</label><br/>
+    <label>种子：</label><input type="text" id="seed"></input>
+    <label>密钥长度：</label>
+    <select id="keylength">
+        <option value="1024">1024</option>
+        <option value="2048">2048</option>
+    </select>
+    <button onclick="generateKey()">生成</button><br/>
+    <textarea id="mypubkey" rows="6" cols="65", readonly="readonly"></textarea><br/>
+    <button onclick="copyTextToClipboard(document.getElementById('mypubkey').value)">复制</button><br/>
+    <label>待解密文本：</label><br/>
+    <textarea id="before_decrypt" type="text" rows=4 cols=65></textarea><br/>
+    <button onclick="decrypt()">解密</button><br/>
+    <textarea id="after_decrypt" type="text" rows=4 cols=65, readonly="readonly"></textarea><br/>
+
+    <br/>
+    <p>
+      powered by <a href="https://github.com/wwwtyro/cryptico">cryptico</a>
+    </p>
+  </body>
+</html>

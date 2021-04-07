@@ -1,0 +1,366 @@
+<!DOCTYPE html> 
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>gobang</title>
+</head>
+<body>
+    <canvas id="canvas" width=600, height=600></canvas>
+    <select id="level" style="position:absolute; left:630px; top:30px;"
+            onchange="b.searchDepth=document.getElementById('level').options.selectedIndex">
+        <option value="beginner">beginner</option>
+        <option value="easy">easy</option>
+        <option value="medium">medium</option>
+        <option value="hard">hard</option>
+    </select>
+    <script type="text/javascript">
+        function Board(width, height) {
+            this.width = width;
+            this.height = height;
+            this.data = new Int8Array(width * height).fill(0);
+            this.stack = [];
+            this.human = 1;
+            this.ai = -1;
+            this.over = false;
+            this.searchDepth = 1;
+            document.getElementById('level').value='easy';
+        }
+
+        Board.prototype.isValid = function(x, y) {
+            return x >= 0 && x < this.width && y >= 0 && y < this.height;
+        }
+
+        Board.prototype.get = function(x, y) {
+            if (y == undefined)
+                return this.data[x];
+            else
+                return this.data[x * this.height + y];
+        }
+
+        Board.prototype.humanPlace = function(x, y) {
+            const index = y == undefined ? x : x * this.height + y;
+            this.data[index] = this.human;
+            this.stack.push(index);
+        }
+
+        Board.prototype.aiPlace = function(x, y) {
+            const index = y == undefined ? x : x * this.height + y;
+            this.data[index] = this.ai;
+            this.stack.push(index);
+        }
+        
+        Board.prototype.pop = function() {
+            this.data[this.stack.pop()] = 0;
+        }
+        
+        Board.prototype.top = function() {
+            return this.stack[this.stack.length - 1];
+        }
+
+        Board.prototype.topxy = function() {
+            const xy = this.top();
+            const x = Math.floor(xy / this.height);
+            const y = xy % this.height;
+            return {
+                'x': x,
+                'y': y
+            };
+        }
+
+        Board.prototype.topCell = function() {
+            return this.data[this.top()];
+        }
+
+        Board.prototype.evaluate = function() {
+            var lastStep = this.topCell();
+            var score = 0;
+            for (let p of this.stack) {
+                const cell = this.get(p);
+                const x = Math.floor(p / this.height);
+                const y = p % this.height;
+                const func = [
+                    (d) => ({'x': x + d, 'y': y}),
+                    (d) => ({'x': x - d, 'y': y}),
+                    (d) => ({'x': x, 'y': y + d}),
+                    (d) => ({'x': x, 'y': y - d}),
+                    (d) => ({'x': x + d, 'y': y + d}),
+                    (d) => ({'x': x - d, 'y': y - d}),
+                    (d) => ({'x': x - d, 'y': y + d}),
+                    (d) => ({'x': x + d, 'y': y - d}),
+                ];
+                let calScore = (I, rival) => {
+                    let expandLengths = Array(8).fill(0);
+                    let blankLengths = Array(8).fill(0);
+                    let score = 0;
+                    for (let i = 0; i < 4; ++i) {
+                        for (let j = 0; j < 2; ++j) {
+                            for (let d = 1; d < 5; ++d) {
+                                let ij = i * 2 + j;
+                                const xy = func[ij](d);
+                                if (!this.isValid(xy.x, xy.y) || this.get(xy.x, xy.y) == rival){
+                                    break;
+                                } else if (this.get(xy.x, xy.y) == 0) {
+                                    blankLengths[ij]++;
+                                } else if (blankLengths[ij] == 0 && this.get(xy.x, xy.y) == I) {
+                                    expandLengths[ij]++;
+                                }
+                            }
+                        }
+                        let expandLength = expandLengths[i*2] + expandLengths[i*2+1];
+                        let blankLength1 = blankLengths[i*2];
+                        let blankLength2 = blankLengths[i*2+1];
+                        if (expandLength + blankLength1 + blankLength2 >= 4) {
+                            if (expandLength == 0) {
+                                score += (blankLength1 + 0.1) * (blankLength2 + 0.1);
+                            } else if (expandLength == 1) {
+                                score += 2 * (blankLength1 + 0.1) * (blankLength2 + 0.1);
+                            } else if (expandLength == 2) {
+                                score += 5 * (blankLength1 + 0.1) * (blankLength2 + 0.1);
+                            } else if (expandLength == 3) {
+                                // 如果轮到I走，那么同样的局势下I的棋子的价值更高
+                                if (lastStep == rival)
+                                    score += 1e9;
+                                else if (blankLength1 == 0)
+                                    score += 5 * blankLength2;
+                                else if (blankLength2 == 0)
+                                    score += 5 * blankLength1;
+                                else
+                                    score += 1e9; // 不能是无穷大，否则ai会倾向于连成4子便放弃
+                            } else { // 只有没有人获胜才需要估计局势，否则直接返回无穷大不再调用evaluate函数
+                                alert('unexcepted error 1 in evaluate');
+                            }
+                        }
+                    }
+                    return score;
+                }
+                if (cell == this.ai) {
+                    let dscore = calScore(this.ai, this.human);
+                    if (dscore == Number.POSITIVE_INFINITY)
+                        return Number.POSITIVE_INFINITY;
+                    score += dscore;
+                } else if (cell == this.human) {
+                    let dscore = calScore(this.human, this.ai);
+                    if (dscore == Number.POSITIVE_INFINITY)
+                        return Number.NEGATIVE_INFINITY;
+                    score -= dscore;
+                } else {
+                    alert('unexcepted error 2 in evaluate');
+                }
+            }
+            return score;
+        }
+
+        Board.prototype.calNext = function() {
+            let searchOrder = new Array(this.data.length);
+            for (let i = 0; i < searchOrder.length; ++i)
+                searchOrder[i] = i;
+            searchOrder.sort((p1, p2) => {
+                let weight = (p) => {
+                    const x = Math.floor(p / this.height);
+                    const y = p % this.height;
+                    let res = 0;
+                    // 内圈加一次
+                    for (let i = -1; i <= 1; ++i)
+                        for (let j = -1; j <= 1; ++j)
+                            if (this.isValid(x + i, y + j) && this.get(x + i, y + j) != 0)
+                                res++;
+                    // 外圈和内圈同时加一次（内圈加了两次）
+                    for (let i = -2; i <= 2; ++i)
+                        for (let j = -2; j <= 2; ++j)
+                            if (this.isValid(x + i, y + j) && this.get(x + i, y + j) != 0)
+                                res++;
+                    return res;
+                }
+                return weight(p2) - weight(p1);
+            })
+
+            let minSearch = (depth, bestScore) => {
+                // minSearch一定是在aiPlace之后调用，所以如果获胜一定是ai获胜
+                if (this.checkWin()) return Number.POSITIVE_INFINITY;
+
+                if (depth == this.searchDepth) return this.evaluate();
+                let minScore = Number.POSITIVE_INFINITY;
+                for (let p of searchOrder) {
+                    if (this.get(p) != 0)
+                        continue;
+                    this.humanPlace(p);
+                    minScore = Math.min(minScore, maxSearch(depth + 1, minScore));
+                    this.pop();
+                    if (minScore <= bestScore) // 剪枝
+                        return minScore;
+                }
+                return minScore;
+            }
+            let maxSearch = (depth, bestScore) => {
+                // maxSearch一定是在humanPlace之后调用，所以如果获胜一定是human获胜
+                if (this.checkWin()) return Number.NEGATIVE_INFINITY;
+
+                if (depth == this.searchDepth) return this.evaluate();
+                let maxScore = Number.NEGATIVE_INFINITY;
+                for (let p of searchOrder) {
+                    if (this.get(p) != 0)
+                        continue;
+                    this.aiPlace(p);
+                    maxScore = Math.max(maxScore, minSearch(depth + 1, maxScore));
+                    this.pop();
+                    if (maxScore >= bestScore) // 剪枝
+                        return maxScore;
+                }
+                return maxScore;
+            }
+
+            var bestScore = Number.NEGATIVE_INFINITY, bestChoice;
+            for (let p of searchOrder) {
+                if (this.get(p) != 0)
+                    continue;
+                this.aiPlace(p);
+                let score = minSearch(0, bestScore);
+                this.pop();
+                if (bestChoice == undefined || score > bestScore) {
+                    bestScore = score;
+                    bestChoice = p;
+                }
+            }
+            return bestChoice;
+        }
+
+        Board.prototype.checkWin = function() {
+            const base = this.topxy();
+            const cell = this.topCell();
+
+            let cnt = [0, 0, 0, 0];
+            let func = [
+                (d) => ({'x': base.x + d, 'y': base.y}),
+                (d) => ({'x': base.x - d, 'y': base.y}),
+                (d) => ({'x': base.x, 'y': base.y + d}),
+                (d) => ({'x': base.x, 'y': base.y - d}),
+                (d) => ({'x': base.x + d, 'y': base.y + d}),
+                (d) => ({'x': base.x - d, 'y': base.y - d}),
+                (d) => ({'x': base.x - d, 'y': base.y + d}),
+                (d) => ({'x': base.x + d, 'y': base.y - d}),
+            ];
+            for (let i = 0; i < 4; ++i) {
+                for (let j = 0; j < 2; ++j) {
+                    for (let d = 1; d < 5; ++d) {
+                        const xy = func[i * 2 + j](d);
+                        if (this.isValid(xy.x, xy.y) &&
+                            this.get(xy.x, xy.y) == cell) {
+                            if (++cnt[i] == 4)
+                                return true;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        Board.prototype.humanClick = function(x, y) {
+            if (!this.over &&
+                this.get(x, y) == 0 && 
+                (this.stack.length == [] || this.topCell() == this.ai)) {
+                this.humanPlace(x, y);
+                this.ui.draw();
+                if (this.checkWin()) {
+                    alert('you win');
+                    this.over = true;
+                    return;
+                }
+                setTimeout(() => {
+                    const p = this.calNext();
+                    this.aiPlace(p);
+                    this.ui.draw();
+                    if (this.checkWin()) {
+                        alert('you lose');
+                        this.over = true;
+                    }     
+                }, 200);     
+            }
+        }
+
+        function UI(canvas, board) {
+            this.canvas = canvas;
+            this.cxt = canvas.getContext("2d");
+            this.board = board;
+            this.board.ui = this;
+            this.canvas.addEventListener('click', (e) => {
+                this.clicked(e);
+            })
+        }
+        
+        UI.prototype.draw = function() {
+            this.cxt.strokeStyle = "black";
+            this.cxt.lineWidth = 1;
+            
+            this.cxt.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            const cellWidth = this.canvas.width / this.board.width;
+            const cellHeight = this.canvas.height / this.board.height;
+            const left = 0.5 * cellWidth;
+            const right = this.canvas.width - 0.5 * cellWidth;
+            const top = 0.5 * cellHeight;
+            const bottom = this.canvas.height - 0.5 * cellHeight;
+            for (let x = 0; x < this.board.width; ++x) {
+                const pos = left + cellWidth * x;
+                this.cxt.moveTo(pos, top);
+                this.cxt.lineTo(pos, bottom);
+            }
+            for (let y = 0; y < this.board.height; ++y) {
+                const pos = top + cellHeight * y;
+                this.cxt.moveTo(left, pos);
+                this.cxt.lineTo(right, pos);
+            }
+            this.cxt.stroke();
+            for (let y = 0; y < this.board.height; ++y) {
+                for (let x = 0; x < this.board.width; ++x) {
+                    const cell = this.board.get(x, y);
+                    const px = left + cellWidth * x;
+                    const py = top + cellHeight * y;
+                    if (cell == 1)
+                        this.cxt.fillStyle = "black";
+                    else if (cell == -1)
+                        this.cxt.fillStyle = "white";
+                    else
+                        continue;
+                    this.cxt.beginPath();
+                    this.cxt.arc(px,py,Math.min(cellWidth,cellHeight)/3,0,Math.PI*2);
+                    this.cxt.closePath();
+                    this.cxt.fill();
+                    this.cxt.stroke();
+                }
+            }
+            const xy = this.board.topxy();
+            const px = left + cellWidth * xy.x;
+            const py = top + cellHeight * xy.y;
+            this.cxt.strokeStyle = "green";
+            this.cxt.lineWidth = 3;
+            this.cxt.beginPath();
+            this.cxt.arc(px,py,Math.min(cellWidth,cellHeight)/3,0,Math.PI*2);
+            this.cxt.closePath();
+            this.cxt.stroke();
+        }
+
+        UI.prototype.clicked = function(e) {
+            const rec = e.target.getBoundingClientRect();
+            const px = e.clientX - rec.left;
+            const py = e.clientY - rec.top;
+            const xboard = px / rec.width * this.board.width
+            const yboard = py / rec.height * this.board.height;
+            // only clicking center is valid 
+            if (xboard % 1 < 0.17 || xboard % 1 > 0.83 || yboard % 1 < 0.17 || yboard % 1 > 0.83)
+                return;
+            const x = Math.floor(xboard);
+            const y = Math.floor(yboard);
+            this.board.humanClick(x, y);
+        }
+
+        var canvas = document.getElementById("canvas");
+        var b = new Board(15, 15);
+        
+        ui = new UI(canvas, b);
+        
+        ui.draw();
+        ui.draw();
+    </script>
+</body>
+</html>
